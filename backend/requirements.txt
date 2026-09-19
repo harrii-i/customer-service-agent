@@ -1,0 +1,30 @@
+# --- Web layer ---
+fastapi==0.118.0
+uvicorn[standard]==0.37.0
+pydantic==2.13.5  # floor imposed by google-genai (>=2.12.5)
+pydantic-settings==2.11.0
+
+# --- LLM ---
+# The only Gemini dependency. Imported solely by app/llm/gemini.py.
+google-genai==2.24.0
+
+# --- Agent orchestration ---
+# Imported only by app/agent/.
+langgraph==1.2.11
+langgraph-checkpoint-postgres==3.1.2
+
+# --- Vector store ---
+# Imported only by app/chroma.py. Embeddings are computed locally by Chroma's
+# default ONNX all-MiniLM-L6-v2 — no text leaves this machine to be embedded.
+chromadb==1.5.9
+
+# --- Database ---
+SQLAlchemy==2.0.43
+psycopg[binary]==3.2.10
+
+# --- Config / logging ---
+python-dotenv==1.1.1
+
+# --- Tests ---
+pytest==8.4.2
+httpx==0.28.1

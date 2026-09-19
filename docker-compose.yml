@@ -1,0 +1,23 @@
+# Docker is used for PostgreSQL only. FastAPI, Next.js and ChromaDB run
+# locally — containerising them adds operational complexity without teaching
+# anything about the architecture.
+services:
+  postgres:
+    image: postgres:16
+    container_name: csam-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: csam
+    ports:
+      - "5432:5432"
+    volumes:
+      - csam_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d csam"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  csam_pgdata:
