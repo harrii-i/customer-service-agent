@@ -18,9 +18,19 @@ langgraph-checkpoint-postgres==3.1.2
 # default ONNX all-MiniLM-L6-v2 — no text leaves this machine to be embedded.
 chromadb==1.5.9
 
+# --- Authentication ---
+# Argon2id password hashing (pwdlib is the maintained successor to passlib)
+# and JWT. Imported only by app/auth/.
+pwdlib[argon2]==0.3.1
+PyJWT==2.14.0
+email-validator==2.3.0
+
 # --- Database ---
 SQLAlchemy==2.0.43
 psycopg[binary]==3.2.10
+# Schema migrations. `create_all` cannot alter an existing table, so it is no
+# longer used for the application schema.
+alembic==1.20.0
 
 # --- Config / logging ---
 python-dotenv==1.1.1

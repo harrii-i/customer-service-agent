@@ -88,6 +88,32 @@ def all_for_user(user_id: str) -> list[dict]:
     ]
 
 
+def get_owned(user_id: str, memory_id: str) -> dict | None:
+    """One memory, only if this user owns it.
+
+    Ownership is part of the lookup, not a check the caller performs after
+    fetching. Fetch-then-compare is the shape that leaks when someone later
+    forgets the compare.
+    """
+    result = memory_collection().get(ids=[memory_id], where={"user_id": user_id})
+    if not result["ids"]:
+        return None
+    return {
+        "id": result["ids"][0],
+        "content": result["documents"][0],
+        "type": result["metadatas"][0].get("type", "fact"),
+    }
+
+
+def delete_one(user_id: str, memory_id: str) -> bool:
+    """Delete a single memory this user owns. False if it is not theirs."""
+    if get_owned(user_id, memory_id) is None:
+        return False
+    memory_collection().delete(ids=[memory_id])
+    logger.info("memory deleted user_id=%s", user_id)
+    return True
+
+
 def delete_for_user(user_id: str) -> int:
     existing = memory_collection().get(where={"user_id": user_id}, include=[])["ids"]
     if existing:

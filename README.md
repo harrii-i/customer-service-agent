@@ -2,16 +2,17 @@
 
 A full-stack customer-support assistant that remembers its customers.
 
-> **Status: all 9 phases complete.** The agent answers with Gemini 3.5
-> Flash-Lite through a LangGraph workflow, checkpointed to PostgreSQL. It
-> recalls durable facts about a customer across *separate* conversations,
-> answers policy questions from the company's documentation, and shows which
-> memories and which documents each answer drew on.
+> **Status: all 9 phases complete, plus authentication.** Customers sign up
+> and sign in with email and password; every conversation and every memory is
+> partitioned by the authenticated account. The agent answers with Gemini 3.5
+> Flash-Lite through a LangGraph workflow checkpointed to PostgreSQL, recalls
+> durable facts across *separate* conversations, answers policy questions from
+> the company's documentation, and shows which memories and which documents
+> each answer drew on.
 >
-> Two things remain true by design. Memories and sources shown in the UI are
+> One thing remains true by design: memories and sources shown in the UI are
 > exactly what the agent received — never invented, and never displayed when
-> nothing was retrieved. And there is still **no authentication**: the user id
-> identifies whose data this is, it does not authorise access.
+> nothing was retrieved.
 
 ## What it does
 
@@ -78,14 +79,33 @@ Conversation history is *what was said*. Long-term memory is *what is worth
 remembering*. The checkpoint is *where the workflow got to*. They are stored
 separately and are never copies of each other.
 
-### User identity
+### Identity and isolation
 
-MVP only, no authentication. The browser calls `POST /users`, stores the
-returned UUID in `localStorage` under `csam_user_id`, and sends it with each
-request. It identifies *whose* data this is; it is not an authorisation claim,
-and it must be replaced by real auth before any real deployment. Every
-conversation query already filters by owner, and an id that does not own a
-conversation gets a 404 rather than a hint that it exists.
+Accounts are email + password, hashed with **Argon2id**. A signed **JWT** is
+delivered as an **httpOnly cookie**, so page scripts — including any injected
+one — cannot read the session token. `Authorization: Bearer` is also accepted,
+for API clients and tests that have no cookie jar.
+
+The browser never says who it is. Every endpoint takes the user id from the
+verified token, never from a path, query or body field, so there is nothing for
+a client to tamper with:
+
+```text
+JWT → FastAPI verifies → current_user.id → conversations, messages, memories
+```
+
+That single id is what partitions all three stores. A conversation query filters
+by owner; a ChromaDB memory query filters by `user_id` inside the query itself.
+An id that does not own a conversation gets a 404 rather than a hint that it
+exists, and the same 404 covers "no such memory" and "not yours".
+
+The memory endpoints have no `{user_id}` in their paths at all — an endpoint
+that cannot name another user cannot be tricked into serving one.
+
+**Known limitation:** logout clears the cookie, but the JWT itself stays valid
+until it expires. That is the price of stateless tokens. Revocation needs
+server-side state — a denylist, or short-lived tokens with refresh — and is the
+right next step if this ever holds anything more sensitive than support chat.
 
 ## Install
 
@@ -120,17 +140,25 @@ the architecture.
 cd backend
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env          # then set DATABASE_URL and GEMINI_API_KEY
+cp .env.example .env          # then set DATABASE_URL, GEMINI_API_KEY, JWT_SECRET
+alembic upgrade head          # create/update the schema
 uvicorn app.main:app --reload --port 8000
 ```
 
-Tables are created on startup. Open http://localhost:8000/docs.
+Open http://localhost:8000/docs.
 
-Schema management is `create_all`, not a migration tool — deliberate while the
-schema is not yet shared (see [Layout](#layout)). The practical consequence: a
-*new* database gets the current schema automatically, but an existing one does
-not pick up a column added later. Until a migration tool is warranted, recreate
-the database or apply the change by hand.
+`JWT_SECRET` must be at least 32 bytes ([RFC 7518 §3.2](https://www.rfc-editor.org/rfc/rfc7518#section-3.2));
+the app refuses to start otherwise rather than accept forgeable tokens:
+
+```bash
+python -c "import secrets; print(secrets.token_urlsafe(48))"
+```
+
+The schema is owned by **Alembic**, not by `create_all`. `create_all` cannot
+alter an existing table, so the two would silently disagree the first time a
+column changed — which bit this project twice before the switch. Migrations
+live in `backend/migrations/versions/`. An existing pre-auth database is
+brought forward with `alembic stamp 0001_baseline && alembic upgrade head`.
 
 ### 3. Frontend
 
@@ -189,7 +217,12 @@ Nothing tunable is hard-coded. See `backend/.env.example`:
 `CHROMA_PATH`, `MEMORY_TOP_K`, `MEMORY_SIMILARITY_THRESHOLD`,
 `MEMORY_DEDUP_THRESHOLD`, `KNOWLEDGE_TOP_K`, `KNOWLEDGE_SIMILARITY_THRESHOLD`,
 `KNOWLEDGE_CHUNK_SIZE`, `KNOWLEDGE_CHUNK_OVERLAP`, `HISTORY_MESSAGE_LIMIT`,
-`MAX_MESSAGE_CHARS`.
+`MAX_MESSAGE_CHARS`, `RETRIEVAL_CONTEXT_TURNS`, `JWT_SECRET`, `JWT_ALGORITHM`,
+`JWT_EXPIRE_MINUTES`, `PASSWORD_MIN_LENGTH`, `AUTH_COOKIE_NAME`,
+`AUTH_COOKIE_SECURE`, `AUTH_COOKIE_SAMESITE`.
+
+**Set `AUTH_COOKIE_SECURE=true` wherever the site is served over HTTPS.** It is
+false by default only so the `http://localhost` dev setup works.
 
 ### The similarity thresholds are measured, not guessed
 
@@ -213,7 +246,8 @@ backend/
   app/
     main.py            FastAPI app, CORS, error handlers, /health
     config.py          all tunables, from the environment
-    api/               chat.py conversations.py users.py
+    api/               auth.py chat.py conversations.py memories.py
+    auth/              security.py dependencies.py schemas.py
     agent/             state.py nodes.py graph.py prompts.py
     database/          connection.py models.py repositories/
     memory/            store.py retriever.py extractor.py deduplicator.py
@@ -222,11 +256,12 @@ backend/
     llm/gemini.py      the only place Gemini is called
   knowledge/           support documentation (markdown)
   scripts/             ingest_knowledge.py
+  migrations/          alembic schema migrations
   tests/
 frontend/
-  app/                 layout.tsx page.tsx globals.css
-  components/          chat/ conversations/ memory/ sources/
-  lib/                 api.ts user.ts
+  app/                 page.tsx signin/ signup/ chat/ layout.tsx globals.css
+  components/          auth/ chat/ conversations/ memory/ sources/
+  lib/                 api.ts
   types/api.ts
 ```
 
@@ -243,11 +278,14 @@ frontend/
 | 7 | Long-term memory (extract + save + retrieve) | ✅ done |
 | 8 | Memory deduplication | ✅ done |
 | 9 | Memory / source UI, tests, polish | ✅ done |
+| — | Authentication & authorization | ✅ done |
 
 Built in this order deliberately: each technology is added and verified on its
 own, so a failure has one plausible cause.
 
 ## Demo
+
+Sign up at http://localhost:3000/signup, then:
 
 **Conversation 1** — "My name is Rahul. I own a WM-200 washing machine."
 → memory saved: user name, product.

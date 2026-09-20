@@ -23,11 +23,31 @@ def _uuid_pk() -> Mapped[uuid.UUID]:
 
 
 class User(Base):
+    """An authenticated account.
+
+    There is exactly one user table. The MVP's browser-generated id is gone:
+    identity now comes from a signed-in account, and `id` is what every
+    conversation, message and ChromaDB memory is partitioned by.
+    """
+
     __tablename__ = "users"
 
     id: Mapped[uuid.UUID] = _uuid_pk()
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    # Stored lower-cased so the unique index *is* the case-insensitive
+    # uniqueness rule. Enforcing it only in Python would let two accounts
+    # race past the check and both land.
+    email: Mapped[str] = mapped_column(String(320), nullable=False, unique=True)
+    # Argon2id digest. Never a password, never returned by any endpoint.
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
     )
 
     conversations: Mapped[list["Conversation"]] = relationship(

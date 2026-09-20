@@ -133,7 +133,7 @@ def test_nothing_is_learned_from_a_failed_generation(monkeypatch):
 
 
 def test_memory_persists_across_separate_conversations(
-    client: TestClient, user_id: str, monkeypatch
+    client: TestClient, account, monkeypatch
 ):
     """Conversation 1 teaches the agent something; conversation 2 is a brand
     new conversation that recalls it. This is the whole point of the project."""
@@ -141,21 +141,17 @@ def test_memory_persists_across_separate_conversations(
         monkeypatch, ("Customer owns a WM-200 washing machine.", "product")
     )
 
-    first = client.post("/conversations", json={"user_id": user_id}).json()[
-        "conversation_id"
-    ]
+    first = client.post("/conversations", json={}).json()["conversation_id"]
     client.post("/chat", json={
-        "user_id": user_id, "conversation_id": first,
+        "conversation_id": first,
         "message": "My name is Rahul and I own a WM-200 washing machine.",
     })
 
     # A different conversation, sharing nothing but the customer.
-    second = client.post("/conversations", json={"user_id": user_id}).json()[
-        "conversation_id"
-    ]
+    second = client.post("/conversations", json={}).json()["conversation_id"]
     assert second != first
     body = client.post("/chat", json={
-        "user_id": user_id, "conversation_id": second,
+        "conversation_id": second,
         "message": "My washing machine is making a loud noise again.",
     }).json()
 
@@ -164,25 +160,22 @@ def test_memory_persists_across_separate_conversations(
 
 
 def test_a_different_customer_recalls_nothing(
-    client: TestClient, user_id: str, monkeypatch
+    client: TestClient, account, other_account, monkeypatch
 ):
     stub_extraction(
         monkeypatch, ("Customer owns a WM-200 washing machine.", "product")
     )
-    conversation = client.post("/conversations", json={"user_id": user_id}).json()[
-        "conversation_id"
-    ]
+    conversation = client.post("/conversations", json={}).json()["conversation_id"]
     client.post("/chat", json={
-        "user_id": user_id, "conversation_id": conversation,
+        "conversation_id": conversation,
         "message": "I own a WM-200 washing machine.",
     })
 
-    other = client.post("/users").json()["user_id"]
-    other_conversation = client.post(
-        "/conversations", json={"user_id": other}
+    other_conversation = other_account.client.post(
+        "/conversations", json={}
     ).json()["conversation_id"]
-    body = client.post("/chat", json={
-        "user_id": other, "conversation_id": other_conversation,
+    body = other_account.client.post("/chat", json={
+        "conversation_id": other_conversation,
         "message": "My washing machine is making a loud noise.",
     }).json()
 

@@ -5,9 +5,11 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.agent.graph import get_graph
+from app.auth.dependencies import get_current_user
 from app.agent.state import AgentContext, initial_state
 from app.config import get_settings
 from app.database.connection import get_db
+from app.database.models import User
 from app.database.repositories import conversations as conversation_repo
 from app.database.repositories import messages as message_repo
 from app.schemas import ChatRequest, ChatResponse
@@ -20,7 +22,11 @@ router = APIRouter(tags=["chat"])
 
 
 @router.post("/chat", response_model=ChatResponse)
-def chat(payload: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
+def chat(
+    payload: ChatRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> ChatResponse:
     started = time.perf_counter()
 
     user_message = payload.message.strip()
@@ -33,7 +39,7 @@ def chat(payload: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
         )
 
     conversation = conversation_repo.get_conversation_for_user(
-        db, payload.conversation_id, payload.user_id
+        db, payload.conversation_id, current_user.id
     )
     if conversation is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
@@ -54,7 +60,9 @@ def chat(payload: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
     result = get_graph().invoke(
         initial_state(),
         context=AgentContext(
-            user_id=str(payload.user_id),
+            # The identity handed to the workflow — and therefore to
+            # ChromaDB's per-user filter — is the authenticated one.
+            user_id=str(current_user.id),
             conversation_id=str(conversation.id),
             user_message=user_message,
             history=[(m.role, m.content) for m in history],
@@ -87,7 +95,7 @@ def chat(payload: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
         "chat_completed conversation_id=%s user_id=%s memories=%d documents=%d "
         "llm_success=%s latency=%.2fs",
         conversation.id,
-        payload.user_id,
+        current_user.id,
         len(memories),
         len(sources),
         llm_success,

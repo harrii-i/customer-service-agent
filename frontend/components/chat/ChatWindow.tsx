@@ -2,56 +2,50 @@
 
 import { useCallback, useEffect, useState } from "react";
 import {
-  API_BASE,
   createConversation,
   getConversation,
   listConversations,
   sendChatMessage,
 } from "@/lib/api";
-import { getOrCreateUserId } from "@/lib/user";
+import { useAuth } from "@/components/auth/AuthProvider";
 import type { ApiMessage, ConversationSummary } from "@/types/api";
 import ConversationSidebar from "@/components/conversations/ConversationSidebar";
+import MemoryPanel from "@/components/memory/MemoryPanel";
 import ChatInput from "./ChatInput";
 import MessageList from "./MessageList";
 
 export default function ChatWindow() {
-  const [userId, setUserId] = useState<string | null>(null);
+  const { user, signOut } = useAuth();
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ApiMessage[]>([]);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showMemories, setShowMemories] = useState(false);
 
-  // Establish the MVP identity, then load this user's conversations.
+  // No identity bootstrap any more: the session already knows who this is.
   useEffect(() => {
-    getOrCreateUserId(API_BASE)
-      .then(async (id) => {
-        setUserId(id);
-        setConversations(await listConversations(id));
-      })
+    listConversations()
+      .then(setConversations)
       .catch((e: Error) => setError(e.message));
   }, []);
 
-  const openConversation = useCallback(
-    async (conversationId: string, uid: string) => {
-      setActiveId(conversationId);
-      setError(null);
-      try {
-        const detail = await getConversation(conversationId, uid);
-        setMessages(detail.messages);
-      } catch (e) {
-        setMessages([]);
-        setError((e as Error).message);
-      }
-    },
-    [],
-  );
+  const openConversation = useCallback(async (conversationId: string) => {
+    setActiveId(conversationId);
+    setError(null);
+    try {
+      const detail = await getConversation(conversationId);
+      setMessages(detail.messages);
+    } catch (e) {
+      setMessages([]);
+      setError((e as Error).message);
+    }
+  }, []);
 
   async function handleCreate() {
-    if (!userId) return;
     try {
-      const { conversation_id } = await createConversation(userId);
-      setConversations(await listConversations(userId));
+      const { conversation_id } = await createConversation();
+      setConversations(await listConversations());
       setMessages([]);
       setActiveId(conversation_id);
     } catch (e) {
@@ -60,7 +54,7 @@ export default function ChatWindow() {
   }
 
   async function handleSend(text: string) {
-    if (!userId || !activeId) return;
+    if (!activeId) return;
     setError(null);
 
     // Optimistic echo so the input feels responsive; replaced by server state
@@ -70,8 +64,6 @@ export default function ChatWindow() {
       role: "user",
       content: text,
       created_at: new Date().toISOString(),
-      // A user message never carries provenance; the server state that
-      // replaces this in a moment is what carries the assistant's.
       memories: [],
       sources: [],
     };
@@ -79,10 +71,10 @@ export default function ChatWindow() {
     setPending(true);
 
     try {
-      await sendChatMessage(userId, activeId, text);
-      const detail = await getConversation(activeId, userId);
+      await sendChatMessage(activeId, text);
+      const detail = await getConversation(activeId);
       setMessages(detail.messages);
-      setConversations(await listConversations(userId));
+      setConversations(await listConversations());
     } catch (e) {
       setMessages((prev) => prev.filter((m) => m.id !== optimistic.id));
       setError((e as Error).message);
@@ -97,16 +89,28 @@ export default function ChatWindow() {
         <h1 className="text-sm font-semibold text-slate-800">
           Customer Support AI
         </h1>
-        <span className="font-mono text-xs text-slate-400">
-          {userId ? `user ${userId.slice(0, 8)}` : "connecting..."}
-        </span>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setShowMemories(true)}
+            className="rounded-lg border border-slate-300 px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100"
+          >
+            🧠 What you remember
+          </button>
+          <span className="text-xs text-slate-500">{user?.name}</span>
+          <button
+            onClick={signOut}
+            className="rounded-lg px-2.5 py-1 text-xs font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+          >
+            Sign out
+          </button>
+        </div>
       </header>
 
       <div className="flex min-h-0 flex-1">
         <ConversationSidebar
           conversations={conversations}
           activeId={activeId}
-          onSelect={(id) => userId && openConversation(id, userId)}
+          onSelect={openConversation}
           onCreate={handleCreate}
         />
 
@@ -129,6 +133,8 @@ export default function ChatWindow() {
           )}
         </main>
       </div>
+
+      {showMemories && <MemoryPanel onClose={() => setShowMemories(false)} />}
     </div>
   );
 }

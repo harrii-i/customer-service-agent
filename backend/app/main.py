@@ -9,10 +9,9 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.agent.checkpointer import setup_checkpointer
-from app.api import chat, conversations, users
+from app.api import auth, chat, conversations, memories
 from app.config import get_settings
 from app.database.connection import engine
-from app.database.models import Base
 
 logging.basicConfig(
     level=logging.INFO,
@@ -24,13 +23,17 @@ settings = get_settings()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    # MVP schema management. A migration tool is warranted once the schema is
-    # shared with other people, not before.
-    Base.metadata.create_all(bind=engine)
-    # LangGraph manages its own checkpoint tables. This must happen at startup,
-    # never inside a request: its migration blocks on open transactions.
+    # The application schema is owned by Alembic — `alembic upgrade head`.
+    # Startup does not create tables: `create_all` cannot alter an existing
+    # one, so the two mechanisms would silently disagree the first time a
+    # column changed. That already bit this project twice.
+    #
+    # LangGraph's checkpoint tables are the exception: it migrates them
+    # itself. This must happen at startup, never inside a request — its
+    # migration uses CREATE INDEX CONCURRENTLY and blocks on open
+    # transactions.
     setup_checkpointer()
-    logger.info("startup complete: schema ensured")
+    logger.info("startup complete")
     yield
 
 
@@ -64,6 +67,7 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-app.include_router(users.router)
+app.include_router(auth.router)
 app.include_router(conversations.router)
 app.include_router(chat.router)
+app.include_router(memories.router)

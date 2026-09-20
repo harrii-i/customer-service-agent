@@ -10,12 +10,8 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field
 
 
-class UserCreated(BaseModel):
-    user_id: uuid.UUID
-
-
 class ConversationCreate(BaseModel):
-    user_id: uuid.UUID
+    # No user id: the owner is the authenticated account, never a body field.
     title: str | None = None
 
 
@@ -74,7 +70,7 @@ class ConversationDetail(ConversationSummary):
 
 
 class ChatRequest(BaseModel):
-    user_id: uuid.UUID
+    # No user id: taken from the token, never from the client.
     conversation_id: uuid.UUID
     message: str
 

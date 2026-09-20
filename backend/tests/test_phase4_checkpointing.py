@@ -100,13 +100,12 @@ def test_the_checkpoint_does_not_become_a_second_transcript():
 
 
 def test_chat_endpoint_writes_a_checkpoint(client: TestClient, user_id: str):
-    conversation_id = client.post(
-        "/conversations", json={"user_id": user_id}
-    ).json()["conversation_id"]
+    conversation_id = client.post("/conversations", json={}).json()[
+        "conversation_id"
+    ]
     client.post(
         "/chat",
         json={
-            "user_id": user_id,
             "conversation_id": conversation_id,
             "message": "My washer is noisy.",
         },

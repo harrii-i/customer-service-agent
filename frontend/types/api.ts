@@ -1,5 +1,13 @@
 export type Role = "user" | "assistant";
 
+/** The signed-in account. Never carries a password or its hash — the backend
+ *  has no field to send one. */
+export interface User {
+  id: string;
+  name: string;
+  email: string;
+}
+
 /** What the agent actually recalled and cited for a message. The UI must
  *  never invent either, and must never show one the agent did not receive. */
 export interface Memory {

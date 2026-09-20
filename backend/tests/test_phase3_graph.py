@@ -140,14 +140,13 @@ def test_empty_retrieval_produces_no_context_block():
 
 
 def test_chat_endpoint_runs_the_workflow(client: TestClient, user_id: str):
-    conversation_id = client.post(
-        "/conversations", json={"user_id": user_id}
-    ).json()["conversation_id"]
+    conversation_id = client.post("/conversations", json={}).json()[
+        "conversation_id"
+    ]
 
     body = client.post(
         "/chat",
         json={
-            "user_id": user_id,
             "conversation_id": conversation_id,
             "message": "My washer is noisy.",
         },

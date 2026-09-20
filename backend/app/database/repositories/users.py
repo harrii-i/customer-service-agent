@@ -1,12 +1,32 @@
+"""User lookups and creation.
+
+`get_or_create_user` is deliberately gone. It existed so a stale browser id
+could materialise an account; with real authentication, an account is created
+by signing up and by nothing else. Leaving it would mean any UUID presented to
+the API still conjures a user.
+"""
+
 import uuid
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database.models import User
 
 
-def create_user(db: Session) -> User:
-    user = User()
+def normalise_email(email: str) -> str:
+    """Trimmed and lower-cased. Applied on every write *and* every lookup, so
+    the stored value and the unique index agree — "Rahul@x.com" and
+    "rahul@x.com" are one account, not two."""
+    return email.strip().lower()
+
+
+def create_user(db: Session, name: str, email: str, password_hash: str) -> User:
+    user = User(
+        name=name.strip(),
+        email=normalise_email(email),
+        password_hash=password_hash,
+    )
     db.add(user)
     db.commit()
     db.refresh(user)
@@ -17,14 +37,6 @@ def get_user(db: Session, user_id: uuid.UUID) -> User | None:
     return db.get(User, user_id)
 
 
-def get_or_create_user(db: Session, user_id: uuid.UUID) -> User:
-    """The frontend keeps its user id in localStorage, so a returning browser
-    can present an id the database no longer has (e.g. a reset dev DB). Rather
-    than 404 the whole app, materialise that id."""
-    user = db.get(User, user_id)
-    if user is None:
-        user = User(id=user_id)
-        db.add(user)
-        db.commit()
-        db.refresh(user)
-    return user
+def get_by_email(db: Session, email: str) -> User | None:
+    stmt = select(User).where(User.email == normalise_email(email))
+    return db.scalars(stmt).first()

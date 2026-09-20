@@ -5,6 +5,7 @@ quietly assumes: that a conversation reads back in the order it was written,
 and that one request cannot hand the LLM an arbitrarily large prompt.
 """
 
+import uuid
 from datetime import datetime, timezone
 
 from fastapi.testclient import TestClient
@@ -21,7 +22,11 @@ def _conversation_with_simultaneous_messages(contents: list[tuple[str, str]]):
     transaction clock — and it is what a batched LangGraph write will look
     like in Phase 3."""
     with SessionLocal() as db:
-        user = User()
+        user = User(
+            name="Transcript Tester",
+            email=f"transcript-{uuid.uuid4()}@example.com",
+            password_hash="!unusable",
+        )
         db.add(user)
         db.commit()
         conversation = Conversation(user_id=user.id)
@@ -70,18 +75,17 @@ def test_recent_messages_takes_the_newest_window_in_order():
     assert [m.content for m in recent] == ["second", "third"]
 
 
-def test_overlong_message_is_rejected(client: TestClient, user_id: str):
+def test_overlong_message_is_rejected(client: TestClient, account):
     """A cost and abuse control: one request must not be able to hand Gemini an
     unbounded prompt."""
-    conversation_id = client.post(
-        "/conversations", json={"user_id": user_id}
-    ).json()["conversation_id"]
+    conversation_id = client.post("/conversations", json={}).json()[
+        "conversation_id"
+    ]
     limit = chat_api.settings.max_message_chars
 
     response = client.post(
         "/chat",
         json={
-            "user_id": user_id,
             "conversation_id": conversation_id,
             "message": "x" * (limit + 1),
         },
@@ -91,23 +95,20 @@ def test_overlong_message_is_rejected(client: TestClient, user_id: str):
 
     # Nothing was persisted, so a rejected message cannot pollute the history
     # handed to the LLM on the next turn.
-    detail = client.get(
-        f"/conversations/{conversation_id}", params={"user_id": user_id}
-    ).json()
+    detail = client.get(f"/conversations/{conversation_id}").json()
     assert detail["messages"] == []
 
 
-def test_message_at_the_limit_is_accepted(client: TestClient, user_id: str):
+def test_message_at_the_limit_is_accepted(client: TestClient, account):
     """The boundary is inclusive — an off-by-one here silently truncates real
     customer messages."""
-    conversation_id = client.post(
-        "/conversations", json={"user_id": user_id}
-    ).json()["conversation_id"]
+    conversation_id = client.post("/conversations", json={}).json()[
+        "conversation_id"
+    ]
 
     response = client.post(
         "/chat",
         json={
-            "user_id": user_id,
             "conversation_id": conversation_id,
             "message": "x" * chat_api.settings.max_message_chars,
         },

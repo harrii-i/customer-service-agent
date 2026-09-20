@@ -77,6 +77,23 @@ class Settings(BaseSettings):
 
     frontend_origin: str = "http://localhost:3000"
 
+    # --- Authentication -----------------------------------------------------
+    # Signing key for JWTs. There is no usable default on purpose: a shared
+    # fallback secret is a forged-token vulnerability, so the app refuses to
+    # start without one rather than quietly accepting anybody's tokens.
+    jwt_secret: str = ""
+    jwt_algorithm: str = "HS256"
+    jwt_expire_minutes: int = 60 * 24 * 7  # a week; a support chat is not a bank
+    password_min_length: int = 8
+
+    # The token is delivered as an httpOnly cookie, so JavaScript — and any
+    # script injected into the page — cannot read it.
+    auth_cookie_name: str = "csam_token"
+    # Must be True wherever the site is served over HTTPS. Left False so the
+    # http://localhost dev setup works; the README says to turn it on.
+    auth_cookie_secure: bool = False
+    auth_cookie_samesite: str = "lax"
+
 
 @lru_cache
 def get_settings() -> Settings:

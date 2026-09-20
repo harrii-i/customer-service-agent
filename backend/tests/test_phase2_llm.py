@@ -20,33 +20,28 @@ from app.llm.gemini import FALLBACK_REPLY, LlmReply
 from tests.conftest import STUB_REPLY
 
 
-def start_conversation(client: TestClient, user_id: str) -> str:
-    return client.post("/conversations", json={"user_id": user_id}).json()[
-        "conversation_id"
-    ]
+def start_conversation(client: TestClient) -> str:
+    return client.post("/conversations", json={}).json()["conversation_id"]
 
 
 # --- the endpoint ----------------------------------------------------------
 
 
 def test_chat_returns_and_persists_the_model_reply(
-    client: TestClient, user_id: str
+    client: TestClient, account
 ):
-    conversation_id = start_conversation(client, user_id)
+    conversation_id = start_conversation(client)
 
     body = client.post(
         "/chat",
         json={
-            "user_id": user_id,
             "conversation_id": conversation_id,
             "message": "My WM-200 is making a loud noise.",
         },
     ).json()
     assert body["message"] == STUB_REPLY
 
-    detail = client.get(
-        f"/conversations/{conversation_id}", params={"user_id": user_id}
-    ).json()
+    detail = client.get(f"/conversations/{conversation_id}").json()
     assert [m["content"] for m in detail["messages"]] == [
         "My WM-200 is making a loud noise.",
         STUB_REPLY,
@@ -54,7 +49,7 @@ def test_chat_returns_and_persists_the_model_reply(
 
 
 def test_model_receives_history_ending_with_the_current_message(
-    client: TestClient, user_id: str, stub_llm
+    client: TestClient, account, stub_llm
 ):
     """The current user message is persisted before generation, so it must
     already be the last turn — the LLM is never asked to answer the
@@ -66,13 +61,12 @@ def test_model_receives_history_ending_with_the_current_message(
         return LlmReply(STUB_REPLY, ok=True)
 
     stub_llm.setattr(agent_nodes, "generate_reply", capture)
-    conversation_id = start_conversation(client, user_id)
+    conversation_id = start_conversation(client)
 
     for message in ["First question", "Second question"]:
         client.post(
             "/chat",
             json={
-                "user_id": user_id,
                 "conversation_id": conversation_id,
                 "message": message,
             },
@@ -87,7 +81,7 @@ def test_model_receives_history_ending_with_the_current_message(
 
 
 def test_history_handed_to_the_model_is_capped(
-    client: TestClient, user_id: str, stub_llm
+    client: TestClient, account, stub_llm
 ):
     """The LLM never receives an unbounded conversation."""
     captured: list[list[tuple[str, str]]] = []
@@ -98,13 +92,12 @@ def test_history_handed_to_the_model_is_capped(
 
     stub_llm.setattr(agent_nodes, "generate_reply", capture)
     stub_llm.setattr(chat_api.settings, "history_message_limit", 4)
-    conversation_id = start_conversation(client, user_id)
+    conversation_id = start_conversation(client)
 
     for index in range(5):
         client.post(
             "/chat",
             json={
-                "user_id": user_id,
                 "conversation_id": conversation_id,
                 "message": f"Question {index}",
             },
@@ -117,7 +110,7 @@ def test_history_handed_to_the_model_is_capped(
 
 
 def test_llm_failure_degrades_rather_than_erroring(
-    client: TestClient, user_id: str, stub_llm
+    client: TestClient, account, stub_llm
 ):
     """A third-party outage must not cost the customer their message or return
     a 500. The fallback is shown, persisted, and reported as not-ok."""
@@ -126,12 +119,11 @@ def test_llm_failure_degrades_rather_than_erroring(
         "generate_reply",
         lambda turns, context=None: LlmReply(FALLBACK_REPLY, ok=False),
     )
-    conversation_id = start_conversation(client, user_id)
+    conversation_id = start_conversation(client)
 
     response = client.post(
         "/chat",
         json={
-            "user_id": user_id,
             "conversation_id": conversation_id,
             "message": "Is my warranty still valid?",
         },
@@ -139,9 +131,7 @@ def test_llm_failure_degrades_rather_than_erroring(
     assert response.status_code == 200
     assert response.json()["message"] == FALLBACK_REPLY
 
-    detail = client.get(
-        f"/conversations/{conversation_id}", params={"user_id": user_id}
-    ).json()
+    detail = client.get(f"/conversations/{conversation_id}").json()
     # The customer's message survives, and the transcript matches the screen.
     assert [m["content"] for m in detail["messages"]] == [
         "Is my warranty still valid?",
@@ -150,16 +140,15 @@ def test_llm_failure_degrades_rather_than_erroring(
 
 
 def test_phase_2_still_claims_no_memories_or_sources(
-    client: TestClient, user_id: str
+    client: TestClient, account
 ):
     """Memory is Phase 7 and sources are Phase 6. Until then the API must not
     imply either exists."""
-    conversation_id = start_conversation(client, user_id)
+    conversation_id = start_conversation(client)
 
     body = client.post(
         "/chat",
         json={
-            "user_id": user_id,
             "conversation_id": conversation_id,
             "message": "Hello",
         },
