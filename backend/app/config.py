@@ -38,6 +38,19 @@ class Settings(BaseSettings):
 
     # Long-term memory retrieval.
     memory_top_k: int = 5
+    # Types that are always surfaced, bypassing the similarity floor. These are
+    # the stable "profile" facts — who the customer is and what they own — that
+    # they expect recalled however they ask ("who am I?", "what do you know
+    # about me?"). Such meta-questions share no words with a declarative fact
+    # ("Customer's name is …") and score far below any usable relevance floor,
+    # so gating them on similarity made the agent deny knowing facts it held.
+    # Issues and preferences stay similarity-gated: they are many and only
+    # relevant in context, and always surfacing them would leak an unrelated
+    # complaint into an off-topic message.
+    memory_always_types: tuple[str, ...] = ("identity", "product")
+    # Ceiling on the always-surfaced profile, so a customer with a long
+    # appliance history does not swamp the prompt.
+    memory_profile_limit: int = 6
     # Floor for a memory to count as relevant to the current message.
     # Calibrated against real extracted memories and the MiniLM embeddings
     # actually in use: a directly relevant memory scores 0.53-0.71, an

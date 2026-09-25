@@ -88,6 +88,28 @@ def all_for_user(user_id: str) -> list[dict]:
     ]
 
 
+def by_types(user_id: str, types: Sequence[str]) -> list[dict]:
+    """Every memory this user holds of the given types, no similarity involved.
+
+    Used for the stable "profile" facts — identity, the appliances owned —
+    that a customer expects recalled regardless of how they phrase the
+    question. A meta-question ("who am I?", "what do you know about me?")
+    shares no words with a declarative fact and so scores far below the
+    relevance floor; gating those on similarity is what made the agent claim
+    it knew nothing while the facts sat in the store. The `type` filter runs
+    inside the Chroma query, and `user_id` still bounds it.
+    """
+    if not types:
+        return []
+    result = memory_collection().get(
+        where={"$and": [{"user_id": user_id}, {"type": {"$in": list(types)}}]}
+    )
+    return [
+        {"id": i, "content": d, "type": m.get("type", "fact")}
+        for i, d, m in zip(result["ids"], result["documents"], result["metadatas"])
+    ]
+
+
 def get_owned(user_id: str, memory_id: str) -> dict | None:
     """One memory, only if this user owns it.
 

@@ -87,6 +87,43 @@ def test_retrieved_shape_matches_the_api_contract():
     assert set(hit) == {"id", "content", "type"}
 
 
+def test_identity_is_recalled_for_a_meta_question():
+    """Regression. "who am I?" / "what do you know about me?" share no words
+    with "Customer's name is …" and score far below the relevance floor, so a
+    similarity-only retriever handed the agent nothing and it truthfully denied
+    knowing the customer. Identity facts must surface regardless of phrasing."""
+    store.save("u1", "Customer's name is Harishankar.", "identity")
+    store.save("u1", "Customer lives in Trivandrum, Kerala.", "identity")
+    for question in ("who am i?", "what is your info about me?", "what is my name?"):
+        contents = [m["content"] for m in retriever.retrieve("u1", question)]
+        assert any("Harishankar" in c for c in contents), question
+
+
+def test_products_owned_surface_regardless_of_phrasing():
+    """The other stable profile fact: what the customer owns, recalled even by
+    a bare "what do you know about me?" that matches nothing lexically."""
+    store.save("u1", "Customer owns a WM-200 washing machine.", "product")
+    contents = [
+        m["content"] for m in retriever.retrieve("u1", "what do you know about me?")
+    ]
+    assert any("WM-200" in c for c in contents)
+
+
+def test_issues_stay_similarity_gated_off_topic():
+    """Issues are not profile facts: an old complaint must not leak into an
+    unrelated message just because it is the customer's."""
+    store.save("u1", "Customer reported a water leak from the washing machine.", "issue")
+    assert retriever.retrieve("u1", "when do you deliver?") == []
+
+
+def test_no_duplicate_when_a_profile_fact_also_matches():
+    """A product asked about directly is both a profile fact and a strong
+    similarity hit; it must appear once, not twice."""
+    store.save("u1", "Customer owns a WM-200 washing machine.", "product")
+    results = retriever.retrieve("u1", "what appliance do I own?")
+    assert sum("WM-200" in m["content"] for m in results) == 1
+
+
 # --- nodes -----------------------------------------------------------------
 
 
