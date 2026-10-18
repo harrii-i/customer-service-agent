@@ -170,10 +170,18 @@ def test_nothing_is_learned_from_a_failed_generation(monkeypatch):
 
 
 def test_memory_persists_across_separate_conversations(
-    client: TestClient, account, monkeypatch
+    client: TestClient, account, monkeypatch, prompt_contexts
 ):
     """Conversation 1 teaches the agent something; conversation 2 is a brand
-    new conversation that recalls it. This is the whole point of the project."""
+    new conversation that recalls it. This is the whole point of the project.
+
+    Reporting the memory is only half of it. `prompt_contexts` records what
+    generation was actually given, so this also asserts the recalled fact
+    reached the model — a response that lists a memory the prompt never
+    carried would be recall the customer cannot benefit from. The reload at
+    the end asserts the same provenance is still there after a refresh,
+    because it is persisted rather than recomputed.
+    """
     stub_extraction(
         monkeypatch, ("Customer owns a WM-200 washing machine.", "product")
     )
@@ -183,6 +191,10 @@ def test_memory_persists_across_separate_conversations(
         "conversation_id": first,
         "message": "My name is Rahul and I own a WM-200 washing machine.",
     })
+
+    # Nothing was known yet when the first reply was generated: the fact is
+    # extracted from that exchange, after it.
+    assert prompt_contexts[0] is None
 
     # A different conversation, sharing nothing but the customer.
     second = client.post("/conversations", json={}).json()["conversation_id"]
@@ -194,6 +206,22 @@ def test_memory_persists_across_separate_conversations(
 
     assert body["memory_used"] is True
     assert any("WM-200" in m["content"] for m in body["memories"])
+
+    # The recalled fact was in front of the model, under the heading that
+    # grants permission to answer from it.
+    second_context = prompt_contexts[-1]
+    assert second_context is not None
+    assert "WM-200" in second_context
+    assert "remembered from earlier conversations" in second_context
+
+    # And it survives a reload: the UI shows the same provenance the live
+    # response did, not a recomputed or empty one.
+    detail = client.get(f"/conversations/{second}").json()
+    assistant = [m for m in detail["messages"] if m["role"] == "assistant"][-1]
+    assert assistant["memories"] == body["memories"]
+    # Nothing was ingested in this test, so an invented citation would show up
+    # here as a non-empty list.
+    assert assistant["sources"] == body["sources"] == []
 
 
 def test_a_different_customer_recalls_nothing(

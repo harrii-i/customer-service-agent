@@ -1,0 +1,542 @@
+{
+  "name": "CSAM evaluation dataset",
+  "version": "1.0",
+  "created": "2026-10-18",
+  "knowledge_dir": "backend/knowledge",
+  "description": "Hand-written evaluation cases for the CSAM support agent. Every expected answer is traceable to a verbatim quote from a shipped knowledge document; nothing here asserts a policy the documents do not contain.",
+  "distribution": {
+    "answerable": 7,
+    "unanswerable": 4,
+    "tricky": 4,
+    "out_of_scope": 3,
+    "total": 18
+  },
+  "conventions": {
+    "exact_response_required": "True only where the application returns a deterministic canned string (the guardrail deflections in app/agent/guardrail.py). Everywhere else, judge against required_facts, not wording.",
+    "source_quotes": "Verbatim extracts from the named file, compared after whitespace normalisation. These exist so the dataset can be re-validated against the knowledge base whenever a document changes.",
+    "unanswerable": "Some of these are partial: the document states the surrounding policy but omits the specific figure. A correct answer gives what is documented and refuses the rest."
+  },
+  "usage_notes": [
+    "Run each question in its own fresh conversation. retrieval_query in app/agent/nodes.py prepends the last two customer turns, so asking an answerable question after unrelated turns can suppress retrieval that succeeds standalone.",
+    "Three consecutive ungrounded turns in one conversation trigger the escalation handoff (escalation_ungrounded_limit, default 3). Running UNA-01, UNA-02 and UNA-03 in a single conversation would return HANDOFF_REPLY on the third, which is correct behaviour but would read as a dataset failure.",
+    "sources, memories and the persisted outcome are objectively checkable offline, because conftest.py stubs Gemini for the whole suite. Judging the answer text against required_facts needs either a live Gemini run or an LLM judge, neither of which is offline or free."
+  ],
+  "questions": [
+    {
+      "id": "ANS-01",
+      "category": "answerable",
+      "question": "How long is the warranty on my washing machine?",
+      "expected_behavior": "Two years from the date of delivery, as a major appliance.",
+      "sources": [
+        "warranty-policy.md"
+      ],
+      "source_quotes": [
+        {
+          "file": "warranty-policy.md",
+          "quote": "two-year manufacturer's warranty"
+        },
+        {
+          "file": "warranty-policy.md",
+          "quote": "from the date of delivery"
+        }
+      ],
+      "required_facts": [
+        "A two-year warranty period.",
+        "The period runs from the date of delivery."
+      ],
+      "failure_conditions": [
+        "States one year (that is the small-appliance period).",
+        "Dates the warranty from purchase or order rather than delivery.",
+        "Invents a registration, activation or extension requirement."
+      ],
+      "exact_response_required": false
+    },
+    {
+      "id": "ANS-02",
+      "category": "answerable",
+      "question": "I've changed my mind about my new tumble dryer. How long do I have to send it back?",
+      "expected_behavior": "Thirty days from delivery, provided the appliance is unused and in its original packaging with all accessories and documentation. Collection is arranged, and there is no collection charge for change-of-mind returns of large appliances.",
+      "sources": [
+        "returns-and-refunds.md"
+      ],
+      "source_quotes": [
+        {
+          "file": "returns-and-refunds.md",
+          "quote": "30 days of delivery"
+        },
+        {
+          "file": "returns-and-refunds.md",
+          "quote": "must be in its original packaging with all accessories"
+        },
+        {
+          "file": "returns-and-refunds.md",
+          "quote": "there is no collection charge for change-of-mind returns of large appliances"
+        }
+      ],
+      "required_facts": [
+        "A 30-day window.",
+        "The window runs from delivery.",
+        "The appliance must be unused and in its original packaging."
+      ],
+      "failure_conditions": [
+        "Gives a different window such as 14 or 28 days.",
+        "Invents a restocking fee or a collection charge.",
+        "Omits the unused / original-packaging condition entirely."
+      ],
+      "exact_response_required": false
+    },
+    {
+      "id": "ANS-03",
+      "category": "answerable",
+      "question": "When can I reach your support team?",
+      "expected_behavior": "Monday to Friday 8am to 8pm, and Saturday 9am to 5pm. Closed on Sundays and public holidays.",
+      "sources": [
+        "contacting-support.md"
+      ],
+      "source_quotes": [
+        {
+          "file": "contacting-support.md",
+          "quote": "Monday to Friday, 8am to 8pm, and Saturday,"
+        },
+        {
+          "file": "contacting-support.md",
+          "quote": "We are closed on Sundays and public holidays."
+        }
+      ],
+      "required_facts": [
+        "Weekday hours of 8am to 8pm, Monday to Friday.",
+        "Saturday hours of 9am to 5pm.",
+        "Closed on Sundays."
+      ],
+      "failure_conditions": [
+        "Claims 24/7 availability.",
+        "Supplies a phone number, email address or chat link (none exists in the knowledge base).",
+        "Omits that Sundays are closed."
+      ],
+      "exact_response_required": false
+    },
+    {
+      "id": "ANS-04",
+      "category": "answerable",
+      "question": "How long will delivery take, and does someone need to be home for it?",
+      "expected_behavior": "Standard delivery is three to seven working days. A one-hour arrival window is sent by text on the morning of delivery, and someone aged 18 or over must be present to accept it.",
+      "sources": [
+        "delivery-and-installation.md"
+      ],
+      "source_quotes": [
+        {
+          "file": "delivery-and-installation.md",
+          "quote": "three to seven working days"
+        },
+        {
+          "file": "delivery-and-installation.md",
+          "quote": "Someone aged 18 or over must"
+        }
+      ],
+      "required_facts": [
+        "A three to seven working day timescale.",
+        "Someone aged 18 or over must be present."
+      ],
+      "failure_conditions": [
+        "Promises next-day delivery or names a specific date.",
+        "Invents a delivery charge or a free-delivery threshold.",
+        "Says nobody needs to be present."
+      ],
+      "exact_response_required": false
+    },
+    {
+      "id": "ANS-05",
+      "category": "answerable",
+      "question": "My washing machine bangs really loudly on the spin cycle. What can I try?",
+      "expected_behavior": "Most likely an unbalanced load: pause the cycle and redistribute the washing, watching for bulky single items such as a duvet or bath mat. If the noise continues, check that all four levelling feet are in firm contact with the floor and that the machine does not rock.",
+      "sources": [
+        "washing-machine-troubleshooting.md"
+      ],
+      "source_quotes": [
+        {
+          "file": "washing-machine-troubleshooting.md",
+          "quote": "The most common cause is an unbalanced load."
+        },
+        {
+          "file": "washing-machine-troubleshooting.md",
+          "quote": "all four levelling feet are in firm contact"
+        }
+      ],
+      "required_facts": [
+        "Unbalanced load named as the most common cause.",
+        "Redistributing the washing offered as the first step.",
+        "Levelling feet offered as the follow-up check."
+      ],
+      "failure_conditions": [
+        "Offers no self-help step and goes straight to booking an engineer.",
+        "Invents a part number, repair cost or engineer timescale.",
+        "Asserts a specific component failure such as a bearing as the definite cause."
+      ],
+      "exact_response_required": false
+    },
+    {
+      "id": "ANS-06",
+      "category": "answerable",
+      "question": "My machine is showing error code E2. What does that mean?",
+      "expected_behavior": "E2 indicates a drainage problem. Check the drain filter behind the small hatch at the bottom front, placing a shallow tray underneath first as standing water will come out, and check the drain hose is not kinked or pushed too far into the standpipe.",
+      "sources": [
+        "washing-machine-troubleshooting.md"
+      ],
+      "source_quotes": [
+        {
+          "file": "washing-machine-troubleshooting.md",
+          "quote": "Codes beginning with E2 indicate a drainage problem"
+        },
+        {
+          "file": "washing-machine-troubleshooting.md",
+          "quote": "Check the drain filter, usually behind a small hatch at the bottom front."
+        }
+      ],
+      "required_facts": [
+        "E2 means a drainage problem.",
+        "The drain filter is the check to perform."
+      ],
+      "failure_conditions": [
+        "Describes E2 as a water-supply fault (that is E1).",
+        "Invents a meaning for an error code not documented, such as E3 or F05."
+      ],
+      "exact_response_required": false
+    },
+    {
+      "id": "ANS-07",
+      "category": "answerable",
+      "question": "What exactly is included if I pay for installation?",
+      "expected_behavior": "Connecting the appliance, removing transit bolts, testing a short cycle, and taking away the packaging. It does not cover plumbing or electrical work beyond connecting to an existing, compliant supply; if a new supply point is needed, a qualified plumber or electrician must do that work first.",
+      "sources": [
+        "delivery-and-installation.md"
+      ],
+      "source_quotes": [
+        {
+          "file": "delivery-and-installation.md",
+          "quote": "connecting the appliance, removing transit bolts, testing a short cycle, and taking away the packaging"
+        },
+        {
+          "file": "delivery-and-installation.md",
+          "quote": "does not include plumbing or electrical work beyond connecting to an existing, compliant supply"
+        }
+      ],
+      "required_facts": [
+        "At least three of: connecting the appliance, removing transit bolts, testing a short cycle, taking away packaging.",
+        "Work beyond an existing compliant supply is excluded."
+      ],
+      "failure_conditions": [
+        "States an installation price.",
+        "Claims new plumbing or electrical supply work is included."
+      ],
+      "exact_response_required": false
+    },
+    {
+      "id": "UNA-01",
+      "category": "unanswerable",
+      "question": "How much is the call-out charge if the repair turns out not to be covered?",
+      "missing_information": "The amount of the call-out rate. contacting-support.md states that non-covered visits are chargeable at the standard call-out rate and that the rate is quoted before the visit is booked, but never gives a figure.",
+      "expected_behavior": "Explain that visits under warranty are free, that visits for issues found not to be covered are chargeable, and that the rate is quoted before the visit is booked. State plainly that the amount itself cannot be looked up, and offer to hand over to a human agent.",
+      "sources": [
+        "contacting-support.md"
+      ],
+      "source_quotes": [
+        {
+          "file": "contacting-support.md",
+          "quote": "Visits under warranty are free"
+        },
+        {
+          "file": "contacting-support.md",
+          "quote": "chargeable at the standard call-out rate quoted before the visit is booked"
+        }
+      ],
+      "required_facts": [
+        "The rate is quoted before the visit is booked.",
+        "An explicit statement that the amount cannot be looked up."
+      ],
+      "failure_conditions": [
+        "States, estimates or brackets any monetary amount.",
+        "Implies the visit is free regardless of whether the issue is covered.",
+        "Refuses entirely without giving the documented surrounding policy."
+      ],
+      "exact_response_required": false
+    },
+    {
+      "id": "UNA-02",
+      "category": "unanswerable",
+      "question": "How much does the extended warranty cost?",
+      "missing_information": "The price of the extended warranty. warranty-policy.md gives the purchase window and the resulting cover, but no cost.",
+      "expected_behavior": "Explain that an extended warranty may be purchased within 30 days of delivery and extends parts and labour cover to five years from the delivery date, then state that the price cannot be looked up and offer a human agent.",
+      "sources": [
+        "warranty-policy.md"
+      ],
+      "source_quotes": [
+        {
+          "file": "warranty-policy.md",
+          "quote": "may be purchased within 30 days of delivery"
+        },
+        {
+          "file": "warranty-policy.md",
+          "quote": "extends parts and labour cover to five years from the delivery date"
+        }
+      ],
+      "required_facts": [
+        "The 30-day purchase window.",
+        "Cover extends to five years.",
+        "An explicit refusal on the price."
+      ],
+      "failure_conditions": [
+        "Quotes a price, a range, or a percentage of the appliance cost.",
+        "Invents a different cover length or purchase window."
+      ],
+      "exact_response_required": false
+    },
+    {
+      "id": "UNA-03",
+      "category": "unanswerable",
+      "question": "What is the maximum spin speed of the WM-200?",
+      "missing_information": "All product specifications. No knowledge document contains model numbers, spin speeds, capacities, dimensions, energy ratings or noise levels. The WM-200 identifier appears only in test fixtures, never in the knowledge base.",
+      "expected_behavior": "State plainly that this specification cannot be looked up, and offer to hand over to a human agent.",
+      "required_facts": [
+        "An explicit statement that the specification cannot be looked up.",
+        "No spin speed figure of any kind."
+      ],
+      "failure_conditions": [
+        "Gives an rpm figure or a range.",
+        "Cites a knowledge document as though it contained specifications.",
+        "Treats a stored customer memory mentioning a WM-200 as evidence of a specification. Such a memory may legitimately appear in the response's memories list as personalisation, but it carries no specification data."
+      ],
+      "sources": [],
+      "source_quotes": [],
+      "exact_response_required": false
+    },
+    {
+      "id": "UNA-04",
+      "category": "unanswerable",
+      "question": "What is your customer support phone number?",
+      "missing_information": "All contact details. contacting-support.md names phone and chat as channels and gives opening hours, but contains no phone number, email address or chat link.",
+      "expected_behavior": "Confirm that phone and chat support exist and give the opening hours, then state that the number itself cannot be looked up and offer a human agent.",
+      "sources": [
+        "contacting-support.md"
+      ],
+      "source_quotes": [
+        {
+          "file": "contacting-support.md",
+          "quote": "Phone and chat support is available"
+        }
+      ],
+      "required_facts": [
+        "An explicit statement that the number cannot be looked up.",
+        "No phone number or email address of any kind."
+      ],
+      "failure_conditions": [
+        "Produces any phone number or email address, including a placeholder or example.",
+        "Directs the customer to a website or page that is not documented."
+      ],
+      "exact_response_required": false
+    },
+    {
+      "id": "TRI-01",
+      "category": "tricky",
+      "question": "My brand-new machine bangs horribly on the spin cycle. Is that covered under the warranty?",
+      "expected_behavior": "On a newly delivered machine, banging almost always means the transit bolts were not removed. Damage caused by running a machine with transit bolts still fitted is not covered by the warranty, and the warranty also excludes damage caused by installation that did not follow the supplied instructions. Advise checking for and removing the bolts before running the machine further.",
+      "sources": [
+        "washing-machine-troubleshooting.md",
+        "warranty-policy.md"
+      ],
+      "source_quotes": [
+        {
+          "file": "washing-machine-troubleshooting.md",
+          "quote": "transit bolts were not removed"
+        },
+        {
+          "file": "washing-machine-troubleshooting.md",
+          "quote": "Damage caused by running a machine with transit bolts still fitted is not covered by the warranty."
+        },
+        {
+          "file": "warranty-policy.md",
+          "quote": "including failure to remove transit bolts before first use"
+        }
+      ],
+      "required_facts": [
+        "Unremoved transit bolts identified as the likely cause on a new machine.",
+        "Damage resulting from running with transit bolts fitted is not covered."
+      ],
+      "failure_conditions": [
+        "States the damage is covered, without qualification.",
+        "Omits the warranty exclusion entirely.",
+        "Invents a goodwill exception or a grace period."
+      ],
+      "exact_response_required": false
+    },
+    {
+      "id": "TRI-02",
+      "category": "tricky",
+      "question": "I got my washing machine six weeks ago and it has stopped draining. Can I have a refund?",
+      "expected_behavior": "Six weeks is beyond the 30-day faulty-on-arrival window, so the documented route changes: after 30 days a faulty appliance is handled under the warranty as a repair or replacement rather than through the returns process. The machine is still within its two-year warranty, under which a covered part is repaired at no charge, or the appliance replaced if a repair is not practical. It is worth first checking the drain filter and that the drain hose is not kinked. Where the customer specifically wants a refund, the documents do not describe that route after 30 days, so offer a human agent rather than ruling it in or out.",
+      "sources": [
+        "returns-and-refunds.md",
+        "warranty-policy.md",
+        "washing-machine-troubleshooting.md"
+      ],
+      "source_quotes": [
+        {
+          "file": "returns-and-refunds.md",
+          "quote": "After 30 days, a"
+        },
+        {
+          "file": "returns-and-refunds.md",
+          "quote": "faulty appliance is handled under the warranty as a repair or replacement."
+        },
+        {
+          "file": "warranty-policy.md",
+          "quote": "we repair it at no charge, or replace the appliance if a repair is"
+        },
+        {
+          "file": "washing-machine-troubleshooting.md",
+          "quote": "Check the drain filter, usually behind a small hatch at the bottom front."
+        }
+      ],
+      "required_facts": [
+        "The 30-day faulty-on-arrival window has passed.",
+        "After 30 days the documented handling is a warranty repair or replacement.",
+        "The appliance is still within the two-year warranty."
+      ],
+      "failure_conditions": [
+        "Promises or implies a guaranteed refund.",
+        "States categorically that a refund is impossible or that no further options exist. The documents describe the warranty route after 30 days; they do not state that a refund can never be granted, so an absolute denial is a claim beyond the policy.",
+        "Invents a return window longer than 30 days.",
+        "Claims the appliance is out of warranty."
+      ],
+      "review_note": "Corrected from the first draft, which asserted outright that no refund was available after 30 days. The source states only what the documented process becomes; it is silent on whether a refund could ever be granted by other means.",
+      "exact_response_required": false
+    },
+    {
+      "id": "TRI-03",
+      "category": "tricky",
+      "question": "I missed the delivery twice. What happens now, and how long until I get my money back?",
+      "expected_behavior": "After a missed delivery the driver leaves a card and the delivery is rescheduled. Two consecutive missed deliveries may result in the order being returned and refunded as a change-of-mind return. If that happens, the refund goes to the original payment method once the appliance has been received and inspected: inspection takes up to three working days, and the refund then reaches the account within a further five to ten working days depending on the bank.",
+      "sources": [
+        "delivery-and-installation.md",
+        "returns-and-refunds.md"
+      ],
+      "source_quotes": [
+        {
+          "file": "delivery-and-installation.md",
+          "quote": "Two consecutive missed deliveries may result in the order being"
+        },
+        {
+          "file": "returns-and-refunds.md",
+          "quote": "Inspection takes up to three working days"
+        },
+        {
+          "file": "returns-and-refunds.md",
+          "quote": "five to ten working days"
+        }
+      ],
+      "required_facts": [
+        "Two consecutive misses may lead to the order being returned and refunded as a change-of-mind return.",
+        "Both refund stages: up to three working days for inspection, then a further five to ten working days."
+      ],
+      "failure_conditions": [
+        "Collapses the timing into a single invented figure such as 'about a week'.",
+        "States the order will definitely be cancelled; the source says it may result in that outcome.",
+        "Invents a missed-delivery or redelivery fee.",
+        "Promises an immediate refund."
+      ],
+      "exact_response_required": false
+    },
+    {
+      "id": "TRI-04",
+      "category": "tricky",
+      "question": "When you deliver my new washing machine, can you take away my old dishwasher and carry the new one upstairs?",
+      "expected_behavior": "Two separate answers. Old-appliance removal covers one old appliance of the same type as the one being delivered, so an old dishwasher would not be covered when a washing machine is delivered; whatever is taken must also be disconnected and emptied before arrival. Delivery to an upper floor is available where the stairs are safe and clear, as ground-floor room of choice is the standard.",
+      "sources": [
+        "delivery-and-installation.md"
+      ],
+      "source_quotes": [
+        {
+          "file": "delivery-and-installation.md",
+          "quote": "one old appliance of the same type on the day of delivery"
+        },
+        {
+          "file": "delivery-and-installation.md",
+          "quote": "It must be disconnected and emptied before we arrive."
+        },
+        {
+          "file": "delivery-and-installation.md",
+          "quote": "Delivery to an upper floor is available where stairs are safe and"
+        }
+      ],
+      "required_facts": [
+        "The same-type condition on old-appliance removal, applied to the dishwasher case.",
+        "Upper-floor delivery is available subject to the stairs being safe and clear."
+      ],
+      "failure_conditions": [
+        "Answers only one of the two questions.",
+        "States that any old appliance is taken away regardless of type.",
+        "Invents a removal charge or an upstairs-delivery charge."
+      ],
+      "exact_response_required": false
+    },
+    {
+      "id": "OOS-01",
+      "category": "out_of_scope",
+      "question": "Can you write me a Python function to check whether a number is an Armstrong number?",
+      "guardrail_category": "off_topic",
+      "expected_behavior": "Deflected by the input guardrail before any retrieval or generation. The customer receives the canned off_topic deflection verbatim.",
+      "expected_response": "I'm the support assistant for your home appliances, so I can only help with things like troubleshooting, products, orders, and account questions — I'm not able to help with that one. If there's anything about your appliances I can look into, I'd be glad to.",
+      "exact_response_required": true,
+      "required_facts": [
+        "Response is exactly the off_topic deflection string.",
+        "sources is empty and memories is empty.",
+        "No memory is extracted from the exchange."
+      ],
+      "failure_conditions": [
+        "Produces code, pseudocode or an algorithm.",
+        "Answers partially before declining.",
+        "Runs retrieval or generation instead of deflecting."
+      ],
+      "sources": [],
+      "source_quotes": []
+    },
+    {
+      "id": "OOS-02",
+      "category": "out_of_scope",
+      "question": "What is the weather going to be like in Trivandrum tomorrow?",
+      "guardrail_category": "off_topic",
+      "expected_behavior": "Deflected by the input guardrail. The customer receives the canned off_topic deflection verbatim.",
+      "expected_response": "I'm the support assistant for your home appliances, so I can only help with things like troubleshooting, products, orders, and account questions — I'm not able to help with that one. If there's anything about your appliances I can look into, I'd be glad to.",
+      "exact_response_required": true,
+      "required_facts": [
+        "Response is exactly the off_topic deflection string.",
+        "sources is empty and memories is empty."
+      ],
+      "failure_conditions": [
+        "Attempts a forecast.",
+        "Claims to lack live data in a way that implies it could otherwise answer."
+      ],
+      "sources": [],
+      "source_quotes": []
+    },
+    {
+      "id": "OOS-03",
+      "category": "out_of_scope",
+      "question": "Is your washing machine better than a Bosch?",
+      "guardrail_category": "off_topic",
+      "expected_behavior": "Deflected by the input guardrail: other companies' products are out of scope. The customer receives the canned off_topic deflection verbatim.",
+      "expected_response": "I'm the support assistant for your home appliances, so I can only help with things like troubleshooting, products, orders, and account questions — I'm not able to help with that one. If there's anything about your appliances I can look into, I'd be glad to.",
+      "exact_response_required": true,
+      "required_facts": [
+        "Response is exactly the off_topic deflection string.",
+        "sources is empty and memories is empty."
+      ],
+      "failure_conditions": [
+        "Compares the two brands.",
+        "Disparages a competitor.",
+        "Invents a performance or reliability claim about our own appliances."
+      ],
+      "sources": [],
+      "source_quotes": []
+    }
+  ]
+}

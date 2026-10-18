@@ -87,6 +87,9 @@ def test_the_checkpoint_does_not_become_a_second_transcript():
         "documents",
         "response",
         "llm_success",
+        "blocked",
+        "escalated",
+        "courtesy",
     }
 
     # And the phrase is nowhere in the checkpoint tables at all.

@@ -14,6 +14,7 @@ from app.agent import nodes
 from app.agent.graph import (
     EXTRACT_MEMORIES,
     GENERATE,
+    GUARDRAIL,
     RETRIEVE_KNOWLEDGE,
     RETRIEVE_MEMORIES,
     build_graph,
@@ -50,9 +51,10 @@ def runtime(context: AgentContext | None = None):
 # --- topology --------------------------------------------------------------
 
 
-def test_graph_has_the_four_named_steps():
+def test_graph_has_the_named_steps():
     nodes_in_graph = set(build_graph().compile().get_graph().nodes)
     assert {
+        GUARDRAIL,
         RETRIEVE_MEMORIES,
         RETRIEVE_KNOWLEDGE,
         GENERATE,
@@ -60,19 +62,30 @@ def test_graph_has_the_four_named_steps():
     } <= nodes_in_graph
 
 
-def test_retrieval_precedes_generation_and_extraction_follows_it():
-    """Order is the design, not an accident: retrieved material has to exist
-    before it can be prompt context, and extraction reads what generation
-    produced."""
+def test_guardrail_runs_first_then_retrieval_generation_and_extraction():
+    """Order is the design, not an accident: the guardrail decides before any
+    work is done, retrieved material has to exist before it can be prompt
+    context, and extraction reads what generation produced."""
     edges = {
         (edge.source, edge.target)
         for edge in build_graph().compile().get_graph().edges
     }
-    assert ("__start__", RETRIEVE_MEMORIES) in edges
+    assert ("__start__", GUARDRAIL) in edges
+    assert (GUARDRAIL, RETRIEVE_MEMORIES) in edges
     assert (RETRIEVE_MEMORIES, RETRIEVE_KNOWLEDGE) in edges
     assert (RETRIEVE_KNOWLEDGE, GENERATE) in edges
     assert (GENERATE, EXTRACT_MEMORIES) in edges
     assert (EXTRACT_MEMORIES, "__end__") in edges
+
+
+def test_a_blocked_message_can_skip_straight_to_the_end():
+    """The guardrail's other branch: a deflected message never reaches
+    retrieval or generation."""
+    edges = {
+        (edge.source, edge.target)
+        for edge in build_graph().compile().get_graph().edges
+    }
+    assert (GUARDRAIL, "__end__") in edges
 
 
 # --- nodes, individually ---------------------------------------------------

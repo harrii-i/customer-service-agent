@@ -28,6 +28,14 @@ class AgentContext:
     # Recent conversation, oldest first, already truncated by the caller and
     # already ending with `user_message`.
     history: list[tuple[str, str]] = field(default_factory=list)
+    # What each earlier *assistant* turn in this conversation amounted to,
+    # oldest first — see `agent.escalation`. It is derived from the same rows
+    # as `history` and lives here, not in `AgentState`, for the same reason
+    # the transcript does: a checkpoint must not become a second copy of
+    # something the `messages` table already owns. Each run is handed a fresh
+    # `AgentState`, so a run of ungrounded replies could not be counted from
+    # the checkpoint even if it were kept there.
+    recent_outcomes: list[str] = field(default_factory=list)
 
 
 class AgentState(TypedDict):
@@ -37,9 +45,28 @@ class AgentState(TypedDict):
     documents: list[dict]  # support-documentation hits (Phase 6)
     response: str
     llm_success: bool
+    # True when the input guardrail deflected the message: retrieval and
+    # generation are skipped and `response` already holds the canned reply.
+    blocked: bool
+    # True when the run was handed to a human instead of answered: generation
+    # and extraction are skipped and `response` holds the handoff reply.
+    escalated: bool
+    # True when the message was pure courtesy — a greeting, thanks, an
+    # acknowledgement — rather than a request for support. It is answered
+    # exactly like any other in-scope message; the flag only stops a
+    # pleasantry from being counted as a failed support attempt.
+    courtesy: bool
 
 
 def initial_state() -> AgentState:
     """Every run starts from empty retrieval. A node that finds nothing must
     leave nothing behind — never last turn's results."""
-    return {"memories": [], "documents": [], "response": "", "llm_success": False}
+    return {
+        "memories": [],
+        "documents": [],
+        "response": "",
+        "llm_success": False,
+        "blocked": False,
+        "escalated": False,
+        "courtesy": False,
+    }

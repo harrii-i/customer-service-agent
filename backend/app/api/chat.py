@@ -4,6 +4,7 @@ import time
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app.agent import escalation
 from app.agent.graph import get_graph
 from app.auth.dependencies import get_current_user
 from app.agent.state import AgentContext, initial_state
@@ -66,6 +67,11 @@ def chat(
             conversation_id=str(conversation.id),
             user_message=user_message,
             history=[(m.role, m.content) for m in history],
+            # Derived from the rows already loaded above, so counting a run
+            # of ungrounded replies costs no extra query. It cannot come from
+            # the checkpoint: every run is handed a fresh `initial_state()`,
+            # so nothing in `AgentState` survives into the next request.
+            recent_outcomes=escalation.outcomes_from(history),
         ),
         # One conversation is one resumable run. The checkpoint records where
         # the workflow got to; the transcript itself stays in `messages`.
@@ -73,6 +79,11 @@ def chat(
     )
     response_text = result["response"]
     llm_success = result["llm_success"]
+    # What this turn amounted to, recorded with the reply so the next turn can
+    # count consecutive ungrounded answers without guessing. A missing
+    # `sources`/`memories` pair has four different causes and they must stay
+    # distinguishable — see `agent.escalation`.
+    outcome = escalation.classify_outcome(result)
     # Empty until Phase 7 (memory) and Phase 6 (documents) fill the retrieval
     # nodes. The UI must never display memory or sources that do not exist.
     memories = result["memories"]
@@ -87,18 +98,23 @@ def chat(
         conversation.id,
         "assistant",
         response_text,
-        context={"memories": memories, "sources": sources} if (memories or sources) else None,
+        # Always a dict now, where it used to be None whenever nothing was
+        # retrieved: the outcome has to be recorded even — especially — when
+        # there was no context to show. `MessageOut` reads only `memories`
+        # and `sources`, so the extra key changes nothing the customer sees.
+        context={"outcome": outcome, "memories": memories, "sources": sources},
     )
 
     # Structured observability. Message contents are deliberately not logged.
     logger.info(
         "chat_completed conversation_id=%s user_id=%s memories=%d documents=%d "
-        "llm_success=%s latency=%.2fs",
+        "llm_success=%s outcome=%s latency=%.2fs",
         conversation.id,
         current_user.id,
         len(memories),
         len(sources),
         llm_success,
+        outcome,
         time.perf_counter() - started,
     )
 

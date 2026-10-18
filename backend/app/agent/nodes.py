@@ -18,6 +18,7 @@ import logging
 
 from langgraph.runtime import Runtime
 
+from app.agent import escalation, guardrail
 from app.agent.prompts import build_context_block
 from app.agent.state import AgentContext, AgentState
 from app.config import get_settings
@@ -30,6 +31,40 @@ from app.rag import retriever as knowledge_retriever
 logger = logging.getLogger("csam.agent")
 
 settings = get_settings()
+
+
+def check_guardrail(state: AgentState, runtime: Runtime[AgentContext]) -> dict:
+    """First node: decide whether the message is allowed to reach the agent.
+
+    An in-scope message passes straight through. Anything else is deflected
+    here with a deterministic canned reply, and the graph then skips retrieval,
+    generation and extraction — there is nothing to retrieve for, and a blocked
+    request is not an exchange worth remembering.
+
+    Classification failing is not a block: `guardrail.classify_verdict` fails
+    open, so the worst case is that the normal agent handles a message the
+    filter could not judge, still bounded by the system prompt.
+
+    The verdict also says whether the message was a support request at all.
+    That changes nothing about how it is answered — a greeting gets a reply
+    like anything else — and is used only so that being polite is not counted
+    as the agent failing to help. See `agent.escalation`.
+    """
+    verdict = guardrail.classify_verdict(runtime.context.user_message)
+    if verdict.category == "in_scope":
+        # The same classification already being made, now also recording
+        # whether the customer asked for anything. No extra model call: this
+        # rides along on the verdict the guardrail always fetches.
+        return {"blocked": False, "courtesy": not verdict.is_support_request}
+    category = verdict.category
+    logger.info("guardrail blocked message category=%s", category)
+    return {
+        "blocked": True,
+        "response": guardrail.deflection(category),
+        # A deliberate, correct reply — not the LLM fallback. Reported as a
+        # successful turn so it is persisted and shown like any other.
+        "llm_success": True,
+    }
 
 
 def retrieval_query(context: AgentContext, turns: int | None = None) -> str:
@@ -84,6 +119,33 @@ def retrieve_knowledge(state: AgentState, runtime: Runtime[AgentContext]) -> dic
         return {"documents": []}
     logger.info("retrieved %d documents", len(documents))
     return {"documents": documents}
+
+
+def escalate(state: AgentState, runtime: Runtime[AgentContext]) -> dict:
+    """Hand the conversation to a human instead of answering it again.
+
+    Reached only when this turn is ungrounded and completes a run of them, so
+    by this point the agent has already tried general troubleshooting and the
+    customer is still asking. Continuing would mean another answer built on
+    nothing, which is how a support bot wastes someone's afternoon.
+
+    Deterministic by design, like `guardrail.deflection`: the customer being
+    handed over should not depend on what a model happens to say, and the
+    graph skips generation and extraction from here. Nothing is learned from
+    a handover — it is the agent failing to answer, not the customer telling
+    it something.
+    """
+    logger.info(
+        "escalating to a human after %d consecutive ungrounded replies",
+        escalation.consecutive_ungrounded(runtime.context.recent_outcomes) + 1,
+    )
+    return {
+        "escalated": True,
+        "response": escalation.HANDOFF_REPLY,
+        # A deliberate, correct reply — persisted and shown like any other
+        # turn, exactly as a guardrail deflection is.
+        "llm_success": True,
+    }
 
 
 def generate(state: AgentState, runtime: Runtime[AgentContext]) -> dict:

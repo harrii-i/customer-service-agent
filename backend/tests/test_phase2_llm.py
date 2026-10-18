@@ -92,6 +92,11 @@ def test_history_handed_to_the_model_is_capped(
 
     stub_llm.setattr(agent_nodes, "generate_reply", capture)
     stub_llm.setattr(chat_api.settings, "history_message_limit", 4)
+    # Five turns in a row retrieve nothing here, which is a handover under the
+    # Phase 10 escalation rule. That is correct behaviour and has its own
+    # tests; it is simply not what this test is about, so it is switched off
+    # rather than worked around.
+    stub_llm.setattr(chat_api.settings, "escalation_ungrounded_limit", 0)
     conversation_id = start_conversation(client)
 
     for index in range(5):

@@ -27,6 +27,7 @@ os.environ.setdefault("JWT_SECRET", "test-only-secret-at-least-32-bytes-long!!")
 from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import text  # noqa: E402
 
+from app.agent import guardrail as agent_guardrail  # noqa: E402
 from app.agent import nodes as agent_nodes  # noqa: E402
 from app.chroma import knowledge_collection, memory_collection  # noqa: E402
 from app.memory import extractor as memory_extractor  # noqa: E402
@@ -37,6 +38,17 @@ from app.llm.gemini import LlmReply  # noqa: E402
 from app.main import app  # noqa: E402
 
 STUB_REPLY = "Stubbed assistant reply."
+
+
+def pytest_configure(config):
+    """Register the marker so `-m evals` / `-m "not evals"` work and pytest
+    does not warn about an unknown mark. The retrieval evaluation is a
+    measurement run, not a unit test, and is worth being able to select or
+    skip on its own."""
+    config.addinivalue_line(
+        "markers",
+        "evals: retrieval evaluation against backend/evals/dataset.json",
+    )
 
 # LangGraph owns these and creates them via its own setup(); they are not in
 # models.py, so Base.metadata neither creates nor cleans them.
@@ -99,7 +111,38 @@ def stub_llm(monkeypatch):
     monkeypatch.setattr(
         memory_extractor, "generate_json", lambda *a, **k: None
     )
+    # The guardrail's classifier is a third Gemini call. Returning None makes
+    # it fail open to in_scope, so by default every message reaches the agent
+    # exactly as before; a guardrail test patches this to a real category.
+    monkeypatch.setattr(
+        agent_guardrail, "generate_json", lambda *a, **k: None
+    )
     return monkeypatch
+
+
+@pytest.fixture
+def prompt_contexts(stub_llm) -> list[str | None]:
+    """The context block handed to the model on each generation, in order.
+
+    The response alone cannot prove what the agent was *given*. `sources` and
+    `memories` say what retrieval found, but an evaluation that reads only
+    those would still pass if the retrieved material never reached the prompt
+    — which is the failure that matters, because it is the prompt the answer
+    is actually grounded in. Recording the `context` argument closes that gap,
+    and more than one module needs it, so it lives here.
+
+    One entry per call, so a test spanning two conversations can tell them
+    apart. `None` is a real value: it is what `build_context_block` returns
+    when nothing was retrieved.
+    """
+    recorded: list[str | None] = []
+
+    def capture(turns, context=None):
+        recorded.append(context)
+        return LlmReply(STUB_REPLY, ok=True)
+
+    stub_llm.setattr(agent_nodes, "generate_reply", capture)
+    return recorded
 
 
 @pytest.fixture

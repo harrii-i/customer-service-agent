@@ -83,6 +83,14 @@ class Settings(BaseSettings):
     # the previous turn attached it scores 0.49.
     retrieval_context_turns: int = 2
 
+    # How many consecutive ungrounded replies end in a handover. The current
+    # turn counts, so 3 means the customer gets two real attempts at general
+    # troubleshooting before the third is escalated instead. Lower would
+    # escalate questions the agent answers perfectly well without sources
+    # (the system prompt allows exactly that); higher leaves someone who
+    # needs a human repeating themselves. 0 disables escalation entirely.
+    escalation_ungrounded_limit: int = 3
+
     # Ceiling on a single inbound message. This is a cost and abuse control on
     # the Gemini call, not a body-size limit — the request is already parsed by
     # the time it is checked.
